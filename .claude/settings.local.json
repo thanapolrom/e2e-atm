@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(netstat -ano)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('Status:', d.get\\('status'\\)\\); print\\('Name:', d.get\\('name'\\)\\); [print\\(f'Step {i+1}: {s.get\\(\\\\\"name\\\\\",\\\\\"\\\\\"\\)} -> {s.get\\(\\\\\"status\\\\\",\\\\\"\\\\\"\\)}'\\) for i,s in enumerate\\(d.get\\('steps',[]\\)\\)]\")",
+      "Bash(taskkill /PID 14296 /F)",
+      "Bash(kill 14296)",
+      "Bash(node proxy-itl.js)",
+      "Bash(curl -s http://127.0.0.1:5002/test/status)",
+      "Bash(cmd //c \"taskkill /f /pid 14296\")",
+      "Bash(curl -s -X POST http://127.0.0.1:5002/test/reset -H \"Content-Type: application/json\" -d '{\"notes\":[{\"value\":50000,\"count\":1}]}')",
+      "Bash(cmd //c \"taskkill /f /pid 18596\")"
+    ]
+  }
+}

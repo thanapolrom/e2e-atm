@@ -5,7 +5,7 @@ import { tag }         from '../pageobjects/base.page.js';
 import { log }         from '../helpers/logger.js';
 
 const ADMIN_USER = 'sitsupqa01';
-const ADMIN_PASS = 'Kbao#654321';
+const ADMIN_PASS = 'Kbao#12345';
 const PROXY_URL  = 'http://127.0.0.1:5002';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -100,8 +100,11 @@ describe('Admin — เงินในตู้', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 notes: [
-                    { value: 50000, count: 3 }, 
+                    { value: 50000, count: 2 }, 
                     { value: 10000, count: 2 }, 
+                    { value: 2000, count: 2 }, 
+                    { value: 5000, count: 2 }, 
+                    { value: 100000, count: 2 }, 
                 ]
             })
         });
@@ -124,13 +127,13 @@ describe('Admin — เงินในตู้', () => {
         await $('~btn_fillBankForPayout_confirm').click();
         log.pass('กดยืนยันสำเร็จ');
 
-        log.step(11, 'รอ dialog ยืนยันยอดรวมขึ้น');
-        const confirmDialogBtn = $('//android.view.ViewGroup/android.view.View/android.view.View/android.view.View[2]/android.widget.Button');
-        await confirmDialogBtn.waitForDisplayed({ timeout: 10000 });
-        log.pass('dialog ยืนยันยอดรวมขึ้นแล้ว');
+        log.step(11, 'รอ dialog ยืนยันยอดรวมขึ้นและปุ่ม enable');
+        const confirmDialogBtn = $('~btn_refillCashModal_enter');
+        await confirmDialogBtn.waitForEnabled({ timeout: 10000 });
+        log.pass('dialog ยืนยันยอดรวมขึ้นและปุ่ม enable แล้ว');
 
-        log.step(12, 'รอ countdown 7 วิแล้วกดยืนยัน');
-        await browser.pause(7000);
+        log.step(12, 'รอ countdown 5 วิแล้วกดยืนยัน');
+        await browser.pause(5000);
         await confirmDialogBtn.click();
         log.pass('กดยืนยันใน dialog สำเร็จ');
 

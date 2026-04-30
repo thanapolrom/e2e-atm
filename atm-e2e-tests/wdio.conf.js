@@ -1,3 +1,7 @@
+const fs   = require('fs');
+const path = require('path');
+const AllureReporter = require('@wdio/allure-reporter').default;
+
 exports.config = {
     runner: 'local',
     port: 4723,
@@ -61,7 +65,20 @@ exports.config = {
             console.log(`\n${green}${bold}  ✅  PASSED${rst}  ${gray}(${ms}s)${rst}`);
         } else {
             console.log(`\n${red}${bold}  ❌  FAILED${rst}  ${gray}(${ms}s)${rst}`);
-            await browser.takeScreenshot();
+
+            const screenshot = await browser.takeScreenshot();
+
+            // บันทึกไฟล์ PNG
+            const screenshotDir = path.join(__dirname, 'screenshots');
+            if (!fs.existsSync(screenshotDir)) fs.mkdirSync(screenshotDir, { recursive: true });
+            const safeName = test.title.replace(/[^\w\-ก-๙]/g, '_').slice(0, 80);
+            const fileName  = `${safeName}_${Date.now()}.png`;
+            const filePath  = path.join(screenshotDir, fileName);
+            fs.writeFileSync(filePath, screenshot, 'base64');
+            console.log(`        ${gray}📸  screenshot: screenshots/${fileName}${rst}`);
+
+            // แนบเข้า Allure report
+            AllureReporter.addAttachment('Screenshot on Failure', Buffer.from(screenshot, 'base64'), 'image/png');
         }
         console.log(`${line}\n`);
     }

@@ -1,0 +1,121 @@
+# ============================================================
+# Requirements — ATM E2E Test Suite
+# ============================================================
+# โปรเจกต์นี้ทดสอบ ATM Android App ด้วย WebdriverIO + Appium
+# ============================================================
+
+
+# ------------------------------------------------------------
+# 1. RUNTIME (ต้องติดตั้งบนเครื่อง PC/Host)
+# ------------------------------------------------------------
+
+Node.js         >= 18.x     https://nodejs.org
+Java JDK        >= 11       https://adoptium.net  (Appium/UiAutomator2 ต้องใช้)
+Python          >= 3.x      (บาง Appium plugin อาจต้องใช้)
+
+
+# ------------------------------------------------------------
+# 2. ANDROID TOOLCHAIN
+# ------------------------------------------------------------
+
+Android SDK Platform Tools (adb)
+  - ต้องอยู่ใน PATH
+  - ดาวน์โหลด: https://developer.android.com/tools/releases/platform-tools
+
+ChromeDriver
+  - วางไว้ที่: C:/chromedriver/chromedriver.exe   (ตาม wdio.conf.js)
+  - version ต้องตรงกับ Chrome/WebView บน device
+  - ดาวน์โหลด: https://chromedriver.chromium.org
+
+
+# ------------------------------------------------------------
+# 3. ANDROID DEVICE
+# ------------------------------------------------------------
+
+- Android 14 (API 34)
+- เชื่อมต่อผ่าน WiFi ADB: 10.55.10.11:5555
+  คำสั่งเชื่อมต่อ: adb connect 10.55.10.11:5555
+- Device ต้อง root (ใช้ iptables ใน run-admin-refill.ps1)
+- ติดตั้งแอป ATM: com.kbao.atm.sit (SIT build)
+- เปิด Developer Options + USB Debugging
+
+
+# ------------------------------------------------------------
+# 4. SERVICES ที่ต้องรันบน PC (ก่อนรัน test)
+# ------------------------------------------------------------
+
+ITL Service (Cash Device API)
+  - รันที่: http://127.0.0.1:5001
+  - Endpoint หลัก:
+      POST /api/Users/Authenticate
+      POST /api/CashDevice/OpenConnection
+      POST /api/CashDevice/EnableAcceptor
+      GET  /api/CashDevice/GetDeviceStatus
+  - proxy-itl.js จะ intercept traffic นี้โดยอัตโนมัติ (ไม่ต้องรัน ITL จริงสำหรับ test จำลอง)
+
+
+# ------------------------------------------------------------
+# 5. NPM PACKAGES (ติดตั้งผ่าน npm install)
+# ------------------------------------------------------------
+
+# devDependencies (ใน package.json)
+@wdio/allure-reporter       ^9.27.0   # สร้าง Allure report
+@wdio/appium-service        ^9.27.0   # จัดการ Appium server อัตโนมัติ
+@wdio/cli                   ^9.27.0   # WebdriverIO CLI
+@wdio/local-runner          ^9.27.0   # runner สำหรับรัน local
+@wdio/mocha-framework       ^9.27.0   # test framework
+@wdio/spec-reporter         ^9.27.0   # แสดง log ใน terminal
+appium                      ^3.2.2    # Appium server
+appium-uiautomator2-driver  ^7.1.0    # Android automation driver
+
+# dependencies
+http-proxy                  ^1.18.1   # proxy-itl.js ใช้ forward traffic
+
+
+# ------------------------------------------------------------
+# 6. ALLURE CLI (สำหรับดู report)
+# ------------------------------------------------------------
+
+npm install -g allure-commandline
+# หรือ
+scoop install allure          # Windows (Scoop)
+brew install allure           # macOS
+
+
+# ------------------------------------------------------------
+# 7. POWERSHELL (สำหรับ run-admin-refill.ps1)
+# ------------------------------------------------------------
+
+Windows PowerShell >= 5.1 (มีใน Windows 10/11 อยู่แล้ว)
+ExecutionPolicy ต้องอนุญาต: Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+
+# ============================================================
+# QUICK START
+# ============================================================
+
+# 1. ติดตั้ง dependencies
+npm install
+
+# 2. เชื่อมต่อ device
+adb connect 10.55.10.11:5555
+
+# 3. รัน admin refill cash test
+npm run admin:refill
+
+# 4. ดู Allure report
+allure serve allure-results
+
+# ============================================================
+# PORT MAP
+# ============================================================
+
+Host :4723  ← Appium server (จัดการโดย @wdio/appium-service)
+Host :5001  ← ITL Service จริง (ถ้ามี) / forward จาก device
+Host :5002  ← proxy-itl.js (intercept + จำลอง banknote)
+Host :5003  ← reverse port รับ traffic จาก device → proxy
+
+Device :5000  ← ITL Service port บน device (ถูก iptables redirect → :5003)
+Device :5555  ← ADB over WiFi
+
+# ============================================================

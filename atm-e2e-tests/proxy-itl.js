@@ -31,7 +31,7 @@ const getNextState = () => {
     }
 
     // รอ 5 polls ก่อนเริ่ม
-    if (pollCount < 5 && phase === 'IDLE') {
+    if (pollCount < 2 && phase === 'IDLE') {
         return { DeviceState: 'IDLE', PollBuffer: [] };
     }
 

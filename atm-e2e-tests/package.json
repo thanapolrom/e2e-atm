@@ -7,7 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "wdio": "wdio run ./wdio.conf.js",
     "admin:refill": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\run-admin-refill.ps1",
-    "topup": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\run-admin-refill.ps1 -Spec .\\test\\specs\\topup.spec.js"
+    "topup": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\run-admin-refill.ps1 -Spec .\\test\\specs\\topup.spec.js",
+    "logs:nv200": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\capture-nv200-network-log.ps1",
+    "logs:nv200:filter": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\capture-nv200-network-log.ps1 -FilterKeywords"
   },
   "keywords": [],
   "author": "",

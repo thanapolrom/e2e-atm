@@ -15,24 +15,31 @@ class AdminLoginPage extends BasePage {
         // กด logo เงินดี 5 ครั้ง
         for (let i = 0; i < 5; i++) {
             await this.click(this.adminIcon);
-            await browser.pause(300);
+            await browser.pause(200);
         }
         await this.waitForPage(this.loginScreen);
         console.log('✅ เข้าหน้า login แล้ว');
     }
 
     async switchToWebView() {
-        // รอ WebView โหลด
-        await browser.pause(2000);
-        const contexts = await driver.getContexts();
-        console.log('Contexts:', contexts);
-        const webContext = contexts.find(c => c.includes('WEBVIEW'));
-        if (webContext) {
-            await driver.switchContext(webContext);
-            console.log('✅ สลับไป WebView แล้ว');
-        } else {
-            throw new Error('ไม่พบ WebView context');
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+            await browser.pause(1000);
+            const contexts = await driver.getContexts();
+            console.log('Contexts:', contexts);
+            const webContexts = contexts.filter(c => c.includes('WEBVIEW')).reverse();
+            for (const ctx of webContexts) {
+                try {
+                    await driver.switchContext(ctx);
+                    await $(this.usernameInput).waitForExist({ timeout: 2000 });
+                    console.log('✅ สลับไป WebView แล้ว:', ctx);
+                    return;
+                } catch {
+                    // stale context หรือยังโหลดไม่เสร็จ — ลอง context ถัดไป
+                }
+            }
         }
+        throw new Error('ไม่พบ WebView ที่ใช้งานได้ภายใน 15 วินาที');
     }
 
     async switchToNative() {

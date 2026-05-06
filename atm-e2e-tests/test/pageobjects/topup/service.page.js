@@ -1,10 +1,10 @@
 import BasePage, { tag } from '../base.page.js';
 
 class TopupServicePage extends BasePage {
-    get screen()        { return tag('screen_topupServiceSelection') }
+    get screen()        { return tag('screen_productSelection') }
     get topupBtn()      { return tag('btn_grid_เติมเงินมือถือ') }
     get buyPackageBtn() { return tag('btn_grid_ซื้อแพ็กเสริม') }
-    get backBtn()       { return tag('btn_ย้อนกลับ') }
+    get backBtn()       { return tag('btn_ย้อนกลับ') }//TODO fix tag
     get homeBtn()       { return tag('btn_หน้าหลัก') }
 
     async selectTopup() {

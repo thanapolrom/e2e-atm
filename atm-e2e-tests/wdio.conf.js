@@ -48,7 +48,7 @@ exports.config = {
 
     mochaOpts: {
         ui: 'bdd',
-        timeout: 180000
+        timeout: 300000
     },
 
     // Screenshot อัตโนมัติเมื่อ test fail

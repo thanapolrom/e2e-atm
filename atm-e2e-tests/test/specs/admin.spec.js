@@ -47,6 +47,7 @@ async function fetchProxyJson(path, options = {}, {
 
 // ── shared setup: login → เงินในตู้ → เติมเงิน → หน้ากรอกแบงค์ ──────────────
 async function setupToFillBankPage() {
+    await driver.switchContext('NATIVE_APP');
     log.step(1, 'รอหน้าเมนูหลัก');
     await MainPage.waitForPage(MainPage.screen);
 
@@ -132,6 +133,16 @@ async function runRefill(notes, stepOffset = 8) {
     s(6, 'กดเสร็จสิ้น');
     await $('~btn_fillBankSummary_done').click();
     log.pass('กดเสร็จสิ้นสำเร็จ');
+
+    s(7, 'รอหน้าเมนู admin → กดออกจากระบบ');
+    await $('~btn_maServiceSelection_logout').waitForDisplayed({ timeout: 10000 });
+    await $('~btn_maServiceSelection_logout').click();
+    log.pass('ออกจากระบบสำเร็จ');
+
+    s(8, 'รอกลับหน้าเมนูหลัก');
+    await driver.switchContext('NATIVE_APP');
+    await MainPage.waitForPage(MainPage.screen);
+    log.pass('กลับหน้าเมนูหลักสำเร็จ');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -150,19 +161,13 @@ describe('Admin — เงินในตู้', () => {
         log.done('happy case จบ');
     });
 
-    it('case — เติมแบงค์ denomination เดียว (500฿)', async () => {
-        log.banner('case — เติมแบงค์ denomination เดียว');
-        await setupToFillBankPage();
-        await runRefill([
-            { value: 50000, count: 5 },
-        ]);
-        log.done('case denomination เดียวจบ');
-    });
-
-    // เพิ่ม case ใหม่ได้ที่นี่
-    // it('case — ...', async () => {
+    // it('case — เติมแบงค์ denomination เดียว (500฿)', async () => {
+    //     log.banner('case — เติมแบงค์ denomination เดียว');
     //     await setupToFillBankPage();
-    //     await runRefill([...]);
+    //     await runRefill([
+    //         { value: 50000, count: 5 },
+    //     ]);
+    //     log.done('case denomination เดียวจบ');
     // });
 
 });

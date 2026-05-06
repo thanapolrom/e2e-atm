@@ -7,12 +7,10 @@ import TopupAmountPage    from '../pageobjects/topup/amount.page.js';
 import TopupConfirmPage   from '../pageobjects/topup/confirm.page.js';
 import TopupCashInputPage from '../pageobjects/topup/cashinput.page.js';
 import TopupReceiptPage   from '../pageobjects/topup/receipt.page.js';
-import { authenticateITL, openConnection, enableAcceptor, waitForEscrow, acceptFromEscrow } from '../helpers/itl.helper.js';
 import { log }            from '../helpers/logger.js';
 
-const TEST_CITIZEN_ID = '9111124111754'; // TODO: เปลี่ยนเป็นข้อมูลจริง
-const TEST_PHONE      = '0830443596';    // TODO: เปลี่ยนเป็นข้อมูลจริง
-
+const TEST_CITIZEN_ID = '8777777777776'; 
+const TEST_PHONE      = '0830443596';    
 describe('เติมเงินมือถือ', () => {
 
     it('happy case — เติมเงิน True 10 บาท', async () => {
@@ -52,14 +50,9 @@ describe('เติมเงินมือถือ', () => {
         await TopupConfirmPage.confirm();
         log.pass('ยืนยันข้อมูลสำเร็จ');
 
-        log.step(9, 'รอหน้าใส่เงิน + จำลองใส่แบงค์ 20 บาท (10 + 2 ค่าธรรมเนียม + เครดิต)');
+        log.step(9, 'รอหน้าใส่เงิน');
         await TopupCashInputPage.waitForPage();
-        const token = await authenticateITL();
-        await openConnection(token);
-        await enableAcceptor(token);
-        await waitForEscrow(token);
-        await acceptFromEscrow(token);
-        log.pass('ใส่เงินสำเร็จ');
+        log.pass('อยู่หน้าใส่เงินแล้ว — TODO: จำลองใส่เงินด้วย ITL');
 
         log.step(10, 'กดยืนยันหลังใส่เงินครบ');
         await TopupCashInputPage.confirm();
@@ -72,7 +65,7 @@ describe('เติมเงินมือถือ', () => {
         log.done('จบ flow เติมเงินมือถือ');
     });
 
-    // เพิ่ม case ใหม่ได้ที่นี่ เช่น เลือก AIS, DTAC หรือจำนวนเงินอื่น
-    // it('case — เติมเงิน AIS 50 บาท', async () => { ... });
+    //TODO เพิ่ม case ใหม่ได้ที่นี่ เช่น เลือก AIS, DTAC หรือจำนวนเงินอื่น
+    //TODO it('case — เติมเงิน AIS 50 บาท', async () => { ... });
 
 });

@@ -6,8 +6,8 @@ import PhonePage   from '../pageobjects/deposit/phone.page.js';
 import OtpPage     from '../pageobjects/deposit/otp.page.js';
 import { log }     from '../helpers/logger.js';
 
-const TEST_CITIZEN_ID = '8777777777776'; // TODO: เปลี่ยนเป็นข้อมูลจริง
-const TEST_PHONE      = '0890000000';    // TODO: เปลี่ยนเป็นข้อมูลจริง
+const TEST_CITIZEN_ID = '8777777777776';
+const TEST_PHONE      = '0890000000';
 const MOCK_OTP        = '111111';
 
 describe('ฝากเงินสด — happy path', () => {

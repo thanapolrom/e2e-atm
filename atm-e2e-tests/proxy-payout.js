@@ -1,0 +1,267 @@
+const http = require('http');
+const httpProxy = require('http-proxy');
+const fs = require('fs');
+const pathModule = require('path');
+const { Readable } = require('stream');
+
+// App เรียก 127.0.0.1:5000 → ตัว proxy นี้รับแทน
+// รัน proxy นี้บน port 5000, ย้าย real device ไป 5004 (ถ้ามี)
+const PAYOUT_REAL = process.env.PAYOUT_REAL || 'http://127.0.0.1:5004';
+const PAYOUT_PROXY_PORT = Number(process.env.PAYOUT_PROXY_PORT || 5000);
+const PAYOUT_MOCK_ENABLED = process.env.PAYOUT_MOCK !== '0';
+const API_LOG_ENABLED = process.env.API_LOG !== '0';
+const API_LOG_DIR = process.env.API_LOG_DIR || pathModule.join(__dirname, 'logs');
+const API_LOG_FILE = process.env.API_LOG_FILE || pathModule.join(
+    API_LOG_DIR,
+    `api-payout-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`
+);
+
+const proxy = httpProxy.createProxyServer({ selfHandleResponse: true });
+
+if (API_LOG_ENABLED) {
+    fs.mkdirSync(API_LOG_DIR, { recursive: true });
+    console.log(`Payout API traffic log: ${API_LOG_FILE}`);
+}
+
+const nowIso = () => new Date().toISOString();
+
+const writeLog = (entry) => {
+    if (!API_LOG_ENABLED) return;
+    fs.appendFileSync(API_LOG_FILE, `${JSON.stringify(entry)}\n`);
+};
+
+const sendJson = (res, statusCode, body) => {
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+};
+
+const readBody = (req) => new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', c => chunks.push(Buffer.from(c)));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+});
+
+// ─── Mock state ──────────────────────────────────────────────────────────────
+
+// denominations ที่ตู้มี: [{ value: 10000, count: 10 }, ...]
+// value เป็น satang (10000 = 100 บาท, 50000 = 500 บาท)
+let denomState = [
+    { value: 10000, count: 10 },   // 100 บาท
+    { value: 50000, count: 10 },   // 500 บาท
+];
+let lastDispenseValue = 0;
+let lastDispenseNotes = [];        // [50000, 10000] ← notes dispensed
+
+const resetState = (denoms = null) => {
+    denomState = denoms || [
+        { value: 10000, count: 10 },
+        { value: 50000, count: 10 },
+    ];
+    lastDispenseValue = 0;
+    lastDispenseNotes = [];
+};
+
+// คืน response สำหรับ GetAllLevels — รูปแบบตรงกับ real API
+const buildGetAllLevels = () => {
+    const ALL = [2000, 5000, 10000, 50000, 100000];
+    return ALL.map(v => {
+        const d = denomState.find(x => x.value === v);
+        return {
+            Value: v,
+            CountryCode: 'THB',
+            IsInhibited: false,
+            IsRecyclable: true,
+            AcceptRoute: d ? 'PAYOUT' : 'CASHBOX',
+            StoredInPayout: d ? d.count : 0,
+            StoredInCashbox: 0,
+        };
+    });
+};
+
+// คำนวณว่าจะจ่ายธนบัตรใบไหนบ้าง (greedy: ใหญ่ก่อน)
+const calcDispense = (totalSatang) => {
+    const sorted = [...denomState].sort((a, b) => b.value - a.value);
+    let remaining = totalSatang;
+    const notes = [];
+
+    for (const denom of sorted) {
+        while (remaining >= denom.value && denom.count > 0) {
+            notes.push(denom.value);
+            denom.count--;
+            remaining -= denom.value;
+        }
+    }
+
+    if (remaining !== 0) return null; // ทอนไม่ได้
+    return notes;
+};
+
+// สร้าง DispenseValue response
+const buildDispenseResult = (notes, totalSatang) => {
+    const groups = {};
+    notes.forEach(v => { groups[v] = (groups[v] || 0) + 1; });
+    const paidStr = Object.entries(groups)
+        .map(([v, c]) => `${c}x ${v} THB`)
+        .join(', ');
+    const operationData =
+        `PAYOUT \r\n\tCompleted - \n\r\tPaid Out: (${totalSatang} THB: ${paidStr}) \n\r\tCashbox: (0 THB: - ) \n\r\tReplenished: (0 THB: - ) \n`;
+
+    return {
+        DispenseResult: 'COMPLETED',
+        PayoutOperationData: operationData,
+    };
+};
+
+// สร้าง GetDeviceStatus/v2 response หลัง dispense
+const buildDeviceStatus = () => {
+    if (!lastDispenseValue || lastDispenseNotes.length === 0) {
+        return { DeviceState: 'DISABLED', PollBuffer: [] };
+    }
+
+    const groups = {};
+    lastDispenseNotes.forEach(v => { groups[v] = (groups[v] || 0) + 1; });
+    const paidStr = Object.entries(groups)
+        .map(([v, c]) => `${c}x ${v} THB`)
+        .join(', ');
+    const operationData =
+        `PAYOUT \r\n\tCompleted - \n\r\tPaid Out: (${lastDispenseValue} THB: ${paidStr}) \n\r\tCashbox: (0 THB: - ) \n\r\tReplenished: (0 THB: - ) \n`;
+
+    return {
+        DeviceState: 'DISABLED',
+        PollBuffer: [
+            { Type: 'DeviceStatusResponse', StateAsString: 'DISPENSING' },
+            { Type: 'CashEventResponse', EventTypeAsString: 'DISPENSING', Value: lastDispenseValue, CountryCode: 'THB' },
+            { Type: 'DeviceStatusResponse', StateAsString: 'NOTE_HELD_IN_BEZEL' },
+            { Type: 'CashEventResponse', EventTypeAsString: 'NOTE_IN_BEZEL_HOLD', Value: lastDispenseNotes[0], CountryCode: 'THB' },
+            { Type: 'DeviceStatusResponse', StateAsString: 'DISABLED' },
+            { Type: 'CashEventResponse', EventTypeAsString: 'DISPENSED', Value: lastDispenseValue, CountryCode: 'THB' },
+            { Type: 'DeviceStatusResponse', StateAsString: 'DISABLED' },
+            { Type: 'DispenserTransactionEventResponse', StateAsString: 'COMPLETED', OperationData: operationData },
+        ],
+    };
+};
+
+// ─── HTTP Server ──────────────────────────────────────────────────────────────
+
+const server = http.createServer((req, res) => {
+    const path = req.url.split('?')[0];
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    // ── test helpers ──────────────────────────────────────────────────────────
+
+    if (req.method === 'GET' && path === '/test/status') {
+        sendJson(res, 200, { denomState, lastDispenseValue, lastDispenseNotes });
+        return;
+    }
+
+    if (req.method === 'POST' && path === '/test/reset') {
+        let body = '';
+        req.on('data', d => (body += d));
+        req.on('end', () => {
+            try {
+                const data = JSON.parse(body || '{}');
+                resetState(data.denoms || null);
+                console.log('🔄 Payout reset:', JSON.stringify(denomState));
+                sendJson(res, 200, { ok: true });
+            } catch (err) {
+                sendJson(res, 400, { ok: false, error: err.message });
+            }
+        });
+        return;
+    }
+
+    // ── mock CashDevice endpoints ─────────────────────────────────────────────
+
+    if (PAYOUT_MOCK_ENABLED) {
+
+        // GET /api/CashDevice/GetAllLevels
+        if (req.method === 'GET' && path.includes('GetAllLevels')) {
+            const body = buildGetAllLevels();
+            console.log(`[GetAllLevels] storages: ${denomState.map(d => `${d.value/100}฿×${d.count}`).join(', ')}`);
+            writeLog({ id, timestamp: nowIso(), path, mock: 'GetAllLevels', body });
+            sendJson(res, 200, body);
+            return;
+        }
+
+        // POST /api/CashDevice/EnablePayout
+        if (req.method === 'POST' && path.includes('EnablePayout')) {
+            console.log(`[EnablePayout] mock OK`);
+            writeLog({ id, timestamp: nowIso(), path, mock: 'EnablePayout' });
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end('Payout enabled successfully.');
+            return;
+        }
+
+        // POST /api/CashDevice/DispenseValue
+        if (req.method === 'POST' && path.includes('DispenseValue')) {
+            readBody(req).then(buf => {
+                let totalSatang = 0;
+                try {
+                    const data = JSON.parse(buf.toString('utf8'));
+                    totalSatang = data.Value || 0;
+                } catch { /* ignore */ }
+
+                const notes = calcDispense(totalSatang);
+
+                if (!notes) {
+                    console.warn(`[DispenseValue] ❌ ทอนไม่ได้ ${totalSatang} satang`);
+                    sendJson(res, 200, { DispenseResult: 'FAILED', PayoutOperationData: 'Insufficient notes' });
+                    return;
+                }
+
+                lastDispenseValue = totalSatang;
+                lastDispenseNotes = notes;
+
+                const result = buildDispenseResult(notes, totalSatang);
+                console.log(`[DispenseValue] 💵 จ่าย ${totalSatang/100} บาท: ${notes.map(v => `${v/100}฿`).join('+')}`);
+                writeLog({ id, timestamp: nowIso(), path, mock: 'DispenseValue', totalSatang, notes, result });
+                sendJson(res, 200, result);
+            });
+            return;
+        }
+
+        // GET /api/CashDevice/GetDeviceStatus/v2
+        if (req.method === 'GET' && path.includes('GetDeviceStatus')) {
+            const body = buildDeviceStatus();
+            console.log(`[GetDeviceStatus/v2] lastDispense=${lastDispenseValue}`);
+            writeLog({ id, timestamp: nowIso(), path, mock: 'GetDeviceStatus', body });
+            sendJson(res, 200, body);
+            return;
+        }
+    }
+
+    // ── pass-through to real device ───────────────────────────────────────────
+    readBody(req).then(bodyBuffer => {
+        proxy.web(req, res, {
+            target: PAYOUT_REAL,
+            buffer: Readable.from([bodyBuffer]),
+        });
+    });
+});
+
+proxy.on('proxyRes', (proxyRes, req, res) => {
+    const chunks = [];
+    proxyRes.on('data', c => chunks.push(Buffer.from(c)));
+    proxyRes.on('end', () => {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        res.end(Buffer.concat(chunks));
+    });
+});
+
+proxy.on('error', (err, req, res) => {
+    console.error('Payout proxy error:', err.message);
+    if (!res.headersSent) res.writeHead(502);
+    res.end('Proxy error');
+});
+
+server.listen(PAYOUT_PROXY_PORT, '0.0.0.0', () => {
+    console.log(`💸 Payout proxy รันที่ PC:${PAYOUT_PROXY_PORT}`);
+    console.log(`   Mock mode: ${PAYOUT_MOCK_ENABLED ? 'ON' : 'OFF (pass-through)'}`);
+    console.log(`   Real device: ${PAYOUT_REAL}`);
+    console.log(`   Denominations: ${denomState.map(d => `${d.value/100}฿×${d.count}`).join(', ')}`);
+});
+
+server.on('clientError', (err, socket) => {
+    if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+});

@@ -1,31 +1,15 @@
-import BasePage from './base.page.js';
+import BasePage, { tag } from './base.page.js';
 
-class WithdrawPage extends BasePage {
+class WithdrawBankPage extends BasePage {
+    get screen()      { return tag('screen_productSelection') }
+    get kasikornBtn() { return tag('btn_grid_กสิกรไทย') }
+    get backBtn()     { return tag('btn_ย้อนกลับ') }
+    get homeBtn()     { return tag('btn_หน้าหลัก') }
 
-    // TODO: เปลี่ยน locator เมื่อดูใน Appium Inspector
-    get amountInput()   { return 'id=com.yourbank.atm:id/withdraw_amount_input' }
-    get confirmBtn()    { return 'id=com.yourbank.atm:id/btn_confirm_withdraw' }
-    get successMsg()    { return 'id=com.yourbank.atm:id/withdraw_success_message' }
-    get balanceLabel()  { return 'id=com.yourbank.atm:id/current_balance' }
-    get errorMsg()      { return 'id=com.yourbank.atm:id/error_message' }
-
-    async withdraw(amount) {
-        await this.setValue(this.amountInput, amount);
-        await this.click(this.confirmBtn);
-    }
-
-    async isSuccess() {
-        return this.isDisplayed(this.successMsg);
-    }
-
-    async getBalance() {
-        const raw = await this.getText(this.balanceLabel);
-        return parseInt(raw.replace(/[^0-9]/g, ''));
-    }
-
-    async getError() {
-        return this.getText(this.errorMsg);
+    async selectKasikorn() {
+        await this.waitForPage(this.screen);
+        await this.click(this.kasikornBtn);
     }
 }
 
-export default new WithdrawPage();
+export default new WithdrawBankPage();

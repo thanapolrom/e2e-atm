@@ -5,7 +5,7 @@ const pathModule = require('path');
 const { Readable } = require('stream');
 const zlib = require('zlib');
 
-const ITL_REAL = 'http://127.0.0.1:5001';
+const ITL_REAL = process.env.ITL_REAL || 'http://127.0.0.1:5001';
 
 const proxy = httpProxy.createProxyServer({ selfHandleResponse: true });
 const API_LOG_ENABLED = process.env.API_LOG !== '0';

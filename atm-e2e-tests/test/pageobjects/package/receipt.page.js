@@ -1,6 +1,6 @@
 import BasePage, { tag } from '../base.page.js';
 
-class TopupReceiptPage extends BasePage {
+class PackageReceiptPage extends BasePage {
     get screen()         { return tag('screen_completeResult') }
     get printSlipBtn()   { return tag('btn_พิมพ์สลิป') }
     get noPrintSlipBtn() { return tag('btn_ไม่พิมพ์สลิป') }
@@ -16,4 +16,4 @@ class TopupReceiptPage extends BasePage {
     }
 }
 
-export default new TopupReceiptPage();
+export default new PackageReceiptPage();

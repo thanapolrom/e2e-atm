@@ -9,63 +9,77 @@ import TopupCashInputPage from '../pageobjects/topup/cashinput.page.js';
 import TopupReceiptPage   from '../pageobjects/topup/receipt.page.js';
 import { log }            from '../helpers/logger.js';
 
-const TEST_CITIZEN_ID = '8777777777776'; 
-const TEST_PHONE      = '0830443596';    
-describe('เติมเงินมือถือ', () => {
+const TEST_CITIZEN_ID = '8777777777776';
+const TEST_PHONE      = '0000000000';
+const TOPUP_AMOUNT    = 500;   // บาท
 
-    it('happy case — เติมเงิน True 10 บาท', async () => {
-        log.banner('happy case — เติมเงิน True 10 บาท');
+async function doTopupFlow(networkName, selectNetwork) {
+    log.step(1, 'รอหน้าเมนูหลัก แล้วกดเติมเงินมือถือ/ซื้อแพ็กเสริม');
+    await MainPage.waitForPage(MainPage.screen);
+    await MainPage.click(MainPage.topupBtn);
+    log.pass('กดเติมเงินมือถือสำเร็จ');
 
-        log.step(1, 'รอหน้าเมนูหลัก');
-        await MainPage.waitForPage(MainPage.screen);
-        log.pass('อยู่หน้าเมนูหลักแล้ว');
+    log.step(2, 'เลือกบริการ — เติมเงินมือถือ');
+    await TopupServicePage.selectTopup();
+    log.pass('เลือกเติมเงินมือถือสำเร็จ');
 
-        log.step(2, 'กดเติมเงินมือถือ/ซื้อแพ็กเสริม');
-        await MainPage.click(MainPage.topupBtn);
-        log.pass('กดเติมเงินมือถือสำเร็จ');
+    log.step(3, `เลือกเครือข่าย — ${networkName}`);
+    await selectNetwork();
+    log.pass(`เลือก ${networkName} สำเร็จ`);
 
-        log.step(3, 'เลือกบริการ — เติมเงินมือถือ');
-        await TopupServicePage.selectTopup();
-        log.pass('เลือกเติมเงินมือถือสำเร็จ');
+    log.step(4, 'กรอกเลขบัตรประชาชน');
+    await CitizenPage.enterCitizenId(TEST_CITIZEN_ID);
+    await CitizenPage.confirm();
+    log.pass('กรอกบัตรประชาชนสำเร็จ');
 
-        log.step(4, 'เลือกเครือข่าย — True');
-        await TopupNetworkPage.selectTrue();
-        log.pass('เลือก True สำเร็จ');
+    log.step(5, 'กรอกเบอร์โทรศัพท์ที่ต้องการเติมเงิน');
+    await TopupPhonePage.enterPhone(TEST_PHONE);
+    await TopupPhonePage.confirm();
+    log.pass('กรอกเบอร์สำเร็จ');
 
-        log.step(5, 'กรอกเลขบัตรประชาชน');
-        await CitizenPage.enterCitizenId(TEST_CITIZEN_ID);
-        await CitizenPage.confirm();
-        log.pass('กรอกบัตรประชาชนสำเร็จ');
+    log.step(6, `เลือกจำนวนเงิน — ${TOPUP_AMOUNT} บาท`);
+    await TopupAmountPage.selectAmount(TOPUP_AMOUNT);
+    log.pass(`เลือก ${TOPUP_AMOUNT} บาทสำเร็จ`);
 
-        log.step(6, 'กรอกเบอร์โทรศัพท์ที่ต้องการเติมเงิน');
-        await TopupPhonePage.enterPhone(TEST_PHONE);
-        await TopupPhonePage.confirm();
-        log.pass('กรอกเบอร์สำเร็จ');
+    log.step(7, 'ตรวจสอบและยืนยันข้อมูล');
+    await TopupConfirmPage.confirm();
+    log.pass('ยืนยันข้อมูลสำเร็จ');
 
-        log.step(7, 'เลือกจำนวนเงิน — 10 บาท');
-        await TopupAmountPage.selectAmount(10);
-        log.pass('เลือกจำนวน 10 บาท สำเร็จ');
-
-        log.step(8, 'ตรวจสอบและยืนยันข้อมูล');
-        await TopupConfirmPage.confirm();
-        log.pass('ยืนยันข้อมูลสำเร็จ');
-
-        log.step(9, 'รอหน้าใส่เงิน');
-        await TopupCashInputPage.waitForPage();
-        log.pass('อยู่หน้าใส่เงินแล้ว — TODO: จำลองใส่เงินด้วย ITL');
-
-        log.step(10, 'กดยืนยันหลังใส่เงินครบ');
-        await TopupCashInputPage.confirm();
-        log.pass('กดยืนยันสำเร็จ');
-
-        log.step(11, 'รอหน้าสรุป → ไม่พิมพ์สลิป');
-        await TopupReceiptPage.skipPrint();
-        log.pass('จบ flow สำเร็จ');
-
-        log.done('จบ flow เติมเงินมือถือ');
+    log.step(8, 'รอหน้าใส่เงิน — proxy จำลองการรับแบงค์ แล้วกดยืนยัน');
+    await fetch('http://127.0.0.1:5004/test/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: TOPUP_AMOUNT * 100 }),
     });
+    await TopupCashInputPage.waitForPage();
+    log.pass('อยู่หน้าใส่เงินแล้ว');
+    await TopupCashInputPage.confirm();
+    log.pass('กดยืนยันสำเร็จ');
 
-    //TODO เพิ่ม case ใหม่ได้ที่นี่ เช่น เลือก AIS, DTAC หรือจำนวนเงินอื่น
-    //TODO it('case — เติมเงิน AIS 50 บาท', async () => { ... });
+    log.step(9, 'หน้าสรุป → ไม่พิมพ์สลิป');
+    await TopupReceiptPage.skipPrint();
+    log.pass('จบ flow สำเร็จ');
 
+    log.done(`จบ flow เติมเงินมือถือ ${networkName} ${TOPUP_AMOUNT} บาท`);
+}
+
+describe('เติมเงินมือถือ ทรู — happy path', () => {
+    it(`เติมเงิน True ${TOPUP_AMOUNT} บาท`, async () => {
+        log.banner(`เติมเงิน True ${TOPUP_AMOUNT} บาท`);
+        await doTopupFlow('ทรู แบบเติมเงิน', () => TopupNetworkPage.selectTrue());
+    });
+});
+
+describe('เติมเงินมือถือ AIS — happy path', () => {
+    it(`เติมเงิน AIS ${TOPUP_AMOUNT} บาท`, async () => {
+        log.banner(`เติมเงิน AIS ${TOPUP_AMOUNT} บาท`);
+        await doTopupFlow('เอไอเอส วัน-ทู-คอล!', () => TopupNetworkPage.selectAIS());
+    });
+});
+
+describe('เติมเงินมือถือ DTAC — happy path', () => {
+    it(`เติมเงิน DTAC ${TOPUP_AMOUNT} บาท`, async () => {
+        log.banner(`เติมเงิน DTAC ${TOPUP_AMOUNT} บาท`);
+        await doTopupFlow('ดีแทค แบบเติมเงิน', () => TopupNetworkPage.selectDTAC());
+    });
 });

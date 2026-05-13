@@ -81,6 +81,11 @@ const calcAcceptorNotes = (amountSatang) => {
     for (const v of ACCEPTOR_DENOMS) {
         while (remaining >= v) { notes.push(v); remaining -= v; }
     }
+    if (remaining > 0) {
+        // remainder doesn't fit any denom exactly — add smallest denom that covers it
+        const fill = [...ACCEPTOR_DENOMS].reverse().find(v => v >= remaining);
+        if (fill) notes.push(fill);
+    }
     return notes;
 };
 

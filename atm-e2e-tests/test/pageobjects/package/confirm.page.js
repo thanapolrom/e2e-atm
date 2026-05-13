@@ -1,6 +1,6 @@
 import BasePage, { tag } from '../base.page.js';
 
-class TopupConfirmPage extends BasePage {
+class PackageConfirmPage extends BasePage {
     get screen()     { return tag('screen_confirmVerifyMoney') }
     get confirmBtn() { return tag('btn_ยืนยัน') }
     get cancelBtn()  { return tag('btn_ยกเลิก') }
@@ -11,4 +11,4 @@ class TopupConfirmPage extends BasePage {
     }
 }
 
-export default new TopupConfirmPage();
+export default new PackageConfirmPage();

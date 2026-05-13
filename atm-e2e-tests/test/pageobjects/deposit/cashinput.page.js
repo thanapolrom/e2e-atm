@@ -6,6 +6,14 @@ class DepositCashInputPage extends BasePage {
     get confirmBtn() { return tagStartsWith('btn_ยืนยันยอดเงิน') }  // suffix เปลี่ยนตามยอด
     get cancelBtn()  { return tag('btn_ยกเลิก') }
 
+    // popup 1: "กรุณายืนยันการเปลี่ยนแปลงยอดเงิน" — ปรากฏเมื่อใส่เงินน้อยกว่ายอดรายการ
+    get modalScreen()            { return tag('modal_action') }
+    get underDepositConfirmBtn() { return tag('modal_btn_confirm') }   // disabled ~5 วิแรก
+    get underDepositAddMoreBtn() { return tag('modal_btn_cancel') }
+
+    // popup 2: "ข้อมูลทำรายการที่เปลี่ยนแปลง"
+    get amountChangeConfirmBtn() { return tag('btn_depositSummary_confirm') }
+
     async waitForPage() {
         await super.waitForPage(this.screen);
     }
@@ -22,9 +30,24 @@ class DepositCashInputPage extends BasePage {
         throw new Error(`Acceptor ไม่เสร็จภายใน ${timeout}ms`);
     }
 
+    // happy path: ใส่เงินครบ → กดยืนยันยอดเงิน
     async confirm() {
         await this.waitForAcceptorDone();
         await this.click(this.confirmBtn);
+    }
+
+    // under-deposit path: ใส่เงินน้อยกว่ายอด → กดยืนยันยอดเงิน → popup1 ยืนยัน → popup2 ยืนยันยอดเงิน
+    async confirmUnderDeposit() {
+        await this.waitForAcceptorDone();
+        await this.click(this.confirmBtn);
+
+        // popup 1 — รอ modal ขึ้น แล้วรอ 6 วิ (ปุ่มถูก disable ~5 วิแรก)
+        await super.waitForPage(this.modalScreen);
+        await browser.pause(6000);
+        await this.click(this.underDepositConfirmBtn);
+
+        // popup 2 — กดยืนยันยอดเงิน
+        await this.click(this.amountChangeConfirmBtn);
     }
 }
 

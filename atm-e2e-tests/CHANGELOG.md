@@ -1,5 +1,56 @@
 # CHANGELOG — ATM E2E Tests
 
+## [2026-05-13] — Package flow + Topup multi-network + Deposit multi-bank + Under-deposit case
+
+### test/specs/package.spec.js — ใหม่ (ซื้อแพ็กเสริม)
+- `doBuyPackageFlow(networkName, selectNetwork)` — 9 steps: เมนูหลัก → เลือกบริการ → เครือข่าย → บัตรประชาชน → เบอร์โทร → เลือกแพ็กเกจ → ยืนยัน → ใส่เงิน → สรุป
+- Test cases: ทรู, AIS, DTAC (ซื้อแพ็กเสริมครั้งละ 100 บาท)
+
+### Page Objects ใหม่ — package flow
+| ไฟล์ | หน้าที่ |
+|---|---|
+| `test/pageobjects/package/network.page.js` | เลือกเครือข่ายสำหรับซื้อแพ็กเสริม |
+| `test/pageobjects/package/packagelist.page.js` | เลือกแพ็กเกจ (กดรายการแรก) |
+| `test/pageobjects/package/confirm.page.js` | ยืนยันการซื้อแพ็กเสริม |
+| `test/pageobjects/package/receipt.page.js` | สรุปรายการ + ไม่พิมพ์สลิป |
+
+### test/specs/topup.spec.js — refactor + เพิ่ม network
+- แยก logic เป็น `doTopupFlow(networkName, selectNetwork)` เพื่อ reuse
+- เพิ่ม test cases: AIS (`selectAIS()`), DTAC (`selectDTAC()`) นอกจาก True
+- เปลี่ยน `TOPUP_AMOUNT` จาก 10 → 500 บาท
+- เปลี่ยน `TEST_PHONE` เป็น `'0000000000'`
+- Step 8: เรียก `POST /test/reset` แจ้ง proxy-payout ก่อน `waitForPage()`
+
+### test/specs/deposit.spec.js — refactor + เพิ่ม bank + under-deposit
+- แยก logic เป็น `doCommonSteps()`, `doHappyPath()`, `doUnderDepositPath()`
+- เพิ่ม test cases: ไทยพาณิชย์ (happy + under-deposit)
+- เพิ่ม under-deposit case: รายการ 600 บาท ใส่เงินจริง 500 บาท → popup confirm → popup ยืนยันยอดเปลี่ยน
+- เปลี่ยน `DEPOSIT_AMOUNT` จาก 1670 → 600 บาท
+
+### deposit/cashinput.page.js — เพิ่ม under-deposit flow
+- เพิ่ม `confirmUnderDeposit()`: กดยืนยัน → รอ popup 1 (6 วิ) → ยืนยัน → popup 2 ยืนยัน
+
+### proxy-payout.js — แก้ calcAcceptorNotes
+- เพิ่ม fallback: ถ้า remainder ไม่ตรง denomination ใด → เพิ่ม denomination เล็กสุดที่ครอบ remainder
+
+### proxy-acceptor.js — ใหม่
+- Acceptor proxy แยกต่างหาก (ออกจาก proxy-payout.js)
+- รันบน port 5004 สำหรับ deposit/topup flow
+
+### run-acceptor.ps1 — ใหม่
+- Script รัน proxy-acceptor.js พร้อม test
+
+### package.json — เพิ่ม scripts
+| Script | คำอธิบาย |
+|---|---|
+| `proxy:payout:5004` | รัน proxy-payout บน port 5004 |
+| `proxy:acceptor` | รัน proxy-acceptor.js |
+| `acceptor` | รัน test ผ่าน run-acceptor.ps1 |
+| `package` | รัน package.spec.js |
+| `topup` | แก้จาก run-admin-refill.ps1 → run-withdraw.ps1 |
+
+---
+
 ## [2026-05-13] — Acceptor mock + Deposit flow ครบ end-to-end
 
 ### proxy-payout.js — เพิ่ม Acceptor mode

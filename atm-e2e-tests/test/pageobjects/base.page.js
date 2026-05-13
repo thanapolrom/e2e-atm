@@ -1,5 +1,9 @@
 export const tag = (testTag) => `~${testTag}`;
 
+// ใช้เมื่อ content-desc มี suffix ที่เปลี่ยนแปลงได้ เช่น "btn_ยืนยันยอดเงิน\n2,000.00 บาท"
+export const tagStartsWith = (prefix) =>
+    `android=new UiSelector().descriptionStartsWith("${prefix}")`;
+
 export default class BasePage {
 
     async findElement(selector) {

@@ -62,6 +62,103 @@ const resetState = (denoms = null) => {
     lastDispenseNotes = [];
 };
 
+// ─── Acceptor state ───────────────────────────────────────────────────────────
+
+// 100฿ (10000) และ 500฿ (50000) → AcceptRoute=PAYOUT → STORED event
+// 20฿ (2000), 50฿ (5000), 1000฿ (100000) → AcceptRoute=CASHBOX → STACKED event
+const STORED_VALUES    = new Set([10000, 50000]);
+const ACCEPTOR_DENOMS  = [100000, 50000, 10000, 5000, 2000]; // greedy order สำหรับ auto-calc
+
+let acceptorEnabled  = false;
+let acceptorNotes    = [];   // flat array of note values, e.g. [50000, 10000, 10000]
+let acceptorNoteIdx  = 0;
+let acceptorPhase    = 'IDLE'; // IDLE|P1|P2|P3a|P3b|ACCEPTING|ESCROW|STACKING|DONE
+
+// คำนวณแบงค์จากยอดเงิน (satang) — greedy ใหญ่ก่อน
+const calcAcceptorNotes = (amountSatang) => {
+    let remaining = amountSatang;
+    const notes = [];
+    for (const v of ACCEPTOR_DENOMS) {
+        while (remaining >= v) { notes.push(v); remaining -= v; }
+    }
+    return notes;
+};
+
+// input รูปแบบที่รองรับ:
+//   number                  → amount in satang, auto-calc notes
+//   [{value, count?}, ...]  → ระบุแบงค์เองพร้อม count (default count=1)
+//   [value, ...]            → flat array เดิม
+const resetAcceptor = (input = []) => {
+    if (typeof input === 'number') {
+        acceptorNotes = calcAcceptorNotes(input);
+    } else if (Array.isArray(input)) {
+        acceptorNotes = input.flatMap(n => {
+            const value = typeof n === 'object' ? n.value : n;
+            const count = (typeof n === 'object' && n.count) ? n.count : 1;
+            return Array(count).fill(value);
+        });
+    } else {
+        acceptorNotes = [];
+    }
+    acceptorNoteIdx = 0;
+    acceptorPhase   = 'IDLE';
+    acceptorEnabled = false;
+};
+
+const buildAcceptorStatus = () => {
+    switch (acceptorPhase) {
+        case 'P1':
+            acceptorPhase = 'P2';
+            return { DeviceState: 'DISABLED', PollBuffer: [] };
+        case 'P2':
+            acceptorPhase = 'P3a';
+            return { DeviceState: 'IDLE', PollBuffer: [{ Type: 'DeviceStatusResponse', StateAsString: 'IDLE' }] };
+        case 'P3a':
+            acceptorPhase = 'P3b';
+            return { DeviceState: 'IDLE', PollBuffer: [] };
+        case 'P3b':
+            acceptorPhase = 'ACCEPTING';
+            return { DeviceState: 'IDLE', PollBuffer: [] };
+        case 'ACCEPTING': {
+            if (acceptorNoteIdx >= acceptorNotes.length) {
+                acceptorPhase = 'DONE';
+                return { DeviceState: 'IDLE', PollBuffer: [] };
+            }
+            acceptorPhase = 'ESCROW';
+            return { DeviceState: 'IDLE', PollBuffer: [{ Type: 'DeviceStatusResponse', StateAsString: 'ACCEPTING' }] };
+        }
+        case 'ESCROW': {
+            const val = acceptorNotes[acceptorNoteIdx];
+            acceptorPhase = 'STACKING';
+            return {
+                DeviceState: 'IDLE',
+                PollBuffer: [
+                    { Type: 'DeviceStatusResponse', StateAsString: 'ESCROW' },
+                    { Type: 'CashEventResponse', EventTypeAsString: 'ESCROW', Value: val, CountryCode: 'THB' },
+                ],
+            };
+        }
+        case 'STACKING': {
+            const val       = acceptorNotes[acceptorNoteIdx];
+            const eventType = STORED_VALUES.has(val) ? 'STORED' : 'STACKED';
+            acceptorNoteIdx++;
+            acceptorPhase = 'ACCEPTING';
+            return {
+                DeviceState: 'IDLE',
+                PollBuffer: [
+                    { Type: 'DeviceStatusResponse', StateAsString: eventType },
+                    { Type: 'CashEventResponse', EventTypeAsString: eventType, Value: val, CountryCode: 'THB' },
+                    { Type: 'DeviceStatusResponse', StateAsString: 'IDLE' },
+                ],
+            };
+        }
+        case 'DONE':
+            return { DeviceState: 'IDLE', PollBuffer: [] };
+        default:
+            return { DeviceState: 'DISABLED', PollBuffer: [] };
+    }
+};
+
 // คืน response สำหรับ GetAllLevels — รูปแบบตรงกับ real API
 const buildGetAllLevels = () => {
     const ALL = [2000, 5000, 10000, 50000, 100000];
@@ -151,7 +248,10 @@ const server = http.createServer((req, res) => {
     // ── test helpers ──────────────────────────────────────────────────────────
 
     if (req.method === 'GET' && path === '/test/status') {
-        sendJson(res, 200, { denomState, lastDispenseValue, lastDispenseNotes });
+        sendJson(res, 200, {
+            denomState, lastDispenseValue, lastDispenseNotes,
+            acceptorEnabled, acceptorPhase, acceptorNotes, acceptorNoteIdx,
+        });
         return;
     }
 
@@ -161,8 +261,11 @@ const server = http.createServer((req, res) => {
         req.on('end', () => {
             try {
                 const data = JSON.parse(body || '{}');
-                resetState(data.denoms || null);
-                console.log('🔄 Payout reset:', JSON.stringify(denomState));
+                if (data.denoms !== undefined) resetState(data.denoms);
+                if (data.amount !== undefined) resetAcceptor(data.amount);       // auto-calc จากยอด satang
+                else if (data.notes !== undefined) resetAcceptor(data.notes);    // ระบุแบงค์เอง
+                if (data.denoms === undefined && data.amount === undefined && data.notes === undefined) resetState(null);
+                console.log('[reset] denoms:', JSON.stringify(denomState), '| acceptorNotes:', JSON.stringify(acceptorNotes));
                 sendJson(res, 200, { ok: true });
             } catch (err) {
                 sendJson(res, 400, { ok: false, error: err.message });
@@ -190,6 +293,29 @@ const server = http.createServer((req, res) => {
             writeLog({ id, timestamp: nowIso(), path, mock: 'EnablePayout' });
             res.writeHead(200, { 'Content-Type': 'text/plain' });
             res.end('Payout enabled successfully.');
+            return;
+        }
+
+        // POST /api/CashDevice/EnableAcceptor
+        if (req.method === 'POST' && path.includes('EnableAcceptor')) {
+            acceptorEnabled = true;
+            acceptorPhase   = 'P1';
+            acceptorNoteIdx = 0;
+            console.log(`[EnableAcceptor] mock OK — notes: ${JSON.stringify(acceptorNotes)}`);
+            writeLog({ id, timestamp: nowIso(), path, mock: 'EnableAcceptor', acceptorNotes });
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end('SPECTRAL_PAYOUT-0: Acceptor enabled successfully.');
+            return;
+        }
+
+        // POST /api/CashDevice/DisableAcceptor
+        if (req.method === 'POST' && path.includes('DisableAcceptor')) {
+            acceptorEnabled = false;
+            acceptorPhase   = 'IDLE';
+            console.log(`[DisableAcceptor] mock OK`);
+            writeLog({ id, timestamp: nowIso(), path, mock: 'DisableAcceptor' });
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end('SPECTRAL_PAYOUT-0: Acceptor disabled successfully.');
             return;
         }
 
@@ -223,9 +349,10 @@ const server = http.createServer((req, res) => {
 
         // GET /api/CashDevice/GetDeviceStatus/v2
         if (req.method === 'GET' && path.includes('GetDeviceStatus')) {
-            const body = buildDeviceStatus();
-            console.log(`[GetDeviceStatus/v2] lastDispense=${lastDispenseValue}`);
-            writeLog({ id, timestamp: nowIso(), path, mock: 'GetDeviceStatus', body });
+            const body = acceptorEnabled ? buildAcceptorStatus() : buildDeviceStatus();
+            const mode = acceptorEnabled ? `acceptor phase=${acceptorPhase}` : `payout lastDispense=${lastDispenseValue}`;
+            console.log(`[GetDeviceStatus/v2] ${mode}`);
+            writeLog({ id, timestamp: nowIso(), path, mock: 'GetDeviceStatus', mode, body });
             sendJson(res, 200, body);
             return;
         }

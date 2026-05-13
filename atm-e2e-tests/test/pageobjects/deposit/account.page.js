@@ -1,14 +1,18 @@
 import BasePage, { tag } from '../base.page.js';
 
-class TopupConfirmPage extends BasePage {
-    get screen()     { return tag('screen_topupConfirm') }
+class DepositAccountPage extends BasePage {
+    get screen()     { return tag('screen_bankIdVerify') }
     get confirmBtn() { return tag('btn_ยืนยัน') }
     get cancelBtn()  { return tag('btn_ยกเลิก') }
 
-    async confirm() {
+    async enterAccount(accountNumber) {
         await this.waitForPage(this.screen);
+        await this.pressNumpad(accountNumber);
+    }
+
+    async confirm() {
         await this.click(this.confirmBtn);
     }
 }
 
-export default new TopupConfirmPage();
+export default new DepositAccountPage();

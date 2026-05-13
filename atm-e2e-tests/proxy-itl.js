@@ -258,7 +258,7 @@ const server = http.createServer((req, res) => {
     const path = req.url.split('?')[0];
     const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-    if (ITL_MOCK_ENABLED && req.method === 'GET' && path.includes('GetDeviceStatus')) {
+    if (ITL_MOCK_ENABLED && req.method === 'GET' && path.includes('GetDeviceStatus') && !path.includes('/api/CashDevice/')) {
         const fakeRes = getNextState();
         writeApiLog({
             id: requestId,

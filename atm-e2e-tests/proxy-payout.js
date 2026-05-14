@@ -74,6 +74,11 @@ let acceptorNotes    = [];   // flat array of note values, e.g. [50000, 10000, 1
 let acceptorNoteIdx  = 0;
 let acceptorPhase    = 'IDLE'; // IDLE|P1|P2|P3a|P3b|ACCEPTING|ESCROW|STACKING|DONE
 
+// เมื่อ passthroughScan=true: GetDeviceStatus จะส่งต่อไป real device และ log response
+// ใช้เพื่อ capture format ของ scanner event ใน PollBuffer
+let passthroughScan  = false;
+const pendingReqs    = new Map(); // id → { path, method }
+
 // คำนวณแบงค์จากยอดเงิน (satang) — greedy ใหญ่ก่อน
 const calcAcceptorNotes = (amountSatang) => {
     let remaining = amountSatang;
@@ -252,6 +257,13 @@ const server = http.createServer((req, res) => {
 
     // ── test helpers ──────────────────────────────────────────────────────────
 
+    if (req.method === 'POST' && path === '/test/passthrough-scan') {
+        passthroughScan = !passthroughScan;
+        console.log(`[passthrough-scan] mode = ${passthroughScan ? 'ON (GetDeviceStatus → real device + log)' : 'OFF (mock)'}`);
+        sendJson(res, 200, { ok: true, passthroughScan });
+        return;
+    }
+
     if (req.method === 'GET' && path === '/test/status') {
         sendJson(res, 200, {
             denomState, lastDispenseValue, lastDispenseNotes,
@@ -354,17 +366,27 @@ const server = http.createServer((req, res) => {
 
         // GET /api/CashDevice/GetDeviceStatus/v2
         if (req.method === 'GET' && path.includes('GetDeviceStatus')) {
-            const body = acceptorEnabled ? buildAcceptorStatus() : buildDeviceStatus();
-            const mode = acceptorEnabled ? `acceptor phase=${acceptorPhase}` : `payout lastDispense=${lastDispenseValue}`;
-            console.log(`[GetDeviceStatus/v2] ${mode}`);
-            writeLog({ id, timestamp: nowIso(), path, mock: 'GetDeviceStatus', mode, body });
-            sendJson(res, 200, body);
-            return;
+            // passthrough-scan mode: ส่งต่อ real device เพื่อ capture scanner event format
+            if (passthroughScan && !acceptorEnabled) {
+                pendingReqs.set(id, { path, method: req.method, ts: nowIso() });
+                req._proxyId = id;
+                // fall through to pass-through below
+            } else {
+                const body = acceptorEnabled ? buildAcceptorStatus() : buildDeviceStatus();
+                const mode = acceptorEnabled ? `acceptor phase=${acceptorPhase}` : `payout lastDispense=${lastDispenseValue}`;
+                console.log(`[GetDeviceStatus/v2] ${mode}`);
+                writeLog({ id, timestamp: nowIso(), path, mock: 'GetDeviceStatus', mode, body });
+                sendJson(res, 200, body);
+                return;
+            }
         }
     }
 
     // ── pass-through to real device ───────────────────────────────────────────
     readBody(req).then(bodyBuffer => {
+        if (passthroughScan && path.includes('GetDeviceStatus')) {
+            console.log(`[capture] → ${req.method} ${path}`);
+        }
         proxy.web(req, res, {
             target: PAYOUT_REAL,
             buffer: Readable.from([bodyBuffer]),
@@ -376,8 +398,21 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
     const chunks = [];
     proxyRes.on('data', c => chunks.push(Buffer.from(c)));
     proxyRes.on('end', () => {
+        const body = Buffer.concat(chunks);
+        // log GetDeviceStatus responses ขณะอยู่ใน capture mode
+        if (passthroughScan && req.url && req.url.includes('GetDeviceStatus')) {
+            const bodyStr = body.toString('utf8');
+            try {
+                const parsed = JSON.parse(bodyStr);
+                const hasPollBuffer = parsed.PollBuffer && parsed.PollBuffer.length > 0;
+                if (hasPollBuffer) {
+                    console.log(`[CAPTURE] GetDeviceStatus response WITH events:\n${JSON.stringify(parsed, null, 2)}`);
+                    writeLog({ timestamp: nowIso(), capture: 'GetDeviceStatus', response: parsed });
+                }
+            } catch { /* ignore parse error */ }
+        }
         res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        res.end(Buffer.concat(chunks));
+        res.end(body);
     });
 });
 

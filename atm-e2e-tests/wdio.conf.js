@@ -66,19 +66,23 @@ exports.config = {
         } else {
             console.log(`\n${red}${bold}  ❌  FAILED${rst}  ${gray}(${ms}s)${rst}`);
 
-            const screenshot = await browser.takeScreenshot();
+            try {
+                const screenshot = await browser.takeScreenshot();
 
-            // บันทึกไฟล์ PNG
-            const screenshotDir = path.join(__dirname, 'screenshots');
-            if (!fs.existsSync(screenshotDir)) fs.mkdirSync(screenshotDir, { recursive: true });
-            const safeName = test.title.replace(/[^\w\-ก-๙]/g, '_').slice(0, 80);
-            const fileName  = `${safeName}_${Date.now()}.png`;
-            const filePath  = path.join(screenshotDir, fileName);
-            fs.writeFileSync(filePath, screenshot, 'base64');
-            console.log(`        ${gray}📸  screenshot: screenshots/${fileName}${rst}`);
+                // บันทึกไฟล์ PNG
+                const screenshotDir = path.join(__dirname, 'screenshots');
+                if (!fs.existsSync(screenshotDir)) fs.mkdirSync(screenshotDir, { recursive: true });
+                const safeName = test.title.replace(/[^\w\-ก-๙]/g, '_').slice(0, 80);
+                const fileName  = `${safeName}_${Date.now()}.png`;
+                const filePath  = path.join(screenshotDir, fileName);
+                fs.writeFileSync(filePath, screenshot, 'base64');
+                console.log(`        ${gray}📸  screenshot: screenshots/${fileName}${rst}`);
 
-            // แนบเข้า Allure report
-            AllureReporter.addAttachment('Screenshot on Failure', Buffer.from(screenshot, 'base64'), 'image/png');
+                // แนบเข้า Allure report
+                AllureReporter.addAttachment('Screenshot on Failure', Buffer.from(screenshot, 'base64'), 'image/png');
+            } catch (screenshotErr) {
+                console.log(`        ${gray}📸  screenshot skipped (session lost: ${screenshotErr.message})${rst}`);
+            }
         }
         console.log(`${line}\n`);
     }

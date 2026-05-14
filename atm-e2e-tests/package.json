@@ -15,6 +15,13 @@
     "proxy:acceptor": "node proxy-acceptor.js",
     "acceptor": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\run-acceptor.ps1",
     "package": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\run-withdraw.ps1 -Spec .\\test\\specs\\package.spec.js",
+    "bill": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\run-bill.ps1",
+    "bill:capture": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\run-bill.ps1 -BackendMode capture",
+    "gen-certs": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\gen-certs.ps1",
+    "setup:backend": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\setup-backend-mock.ps1",
+    "teardown:backend": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\setup-backend-mock.ps1 -Teardown",
+    "proxy:backend": "node proxy-backend.js",
+    "all": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\run-all.ps1",
     "withdraw": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File .\\run-withdraw.ps1"
   },
   "keywords": [],

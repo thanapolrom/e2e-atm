@@ -11,9 +11,37 @@ import { log }            from '../helpers/logger.js';
 
 const TEST_CITIZEN_ID  = '8777777777776';
 const TEST_PHONE       = '0000000000';
-const PACKAGE_AMOUNT   = 100;  // บาท — ใส่เผื่อให้ครอบทุกแพ็กเกจ (เงินส่วนเกินเก็บเป็นเครดิต)
+const PACKAGE_AMOUNT   = 500;  // บาท — ใส่เผื่อครอบทุกแพ็กเกจ (เงินส่วนเกินเก็บเป็นเครดิต)
 
-async function doBuyPackageFlow(networkName, selectNetwork) {
+// AIS — 6 tabs, 26 packages
+const AIS_TABS = [
+    { name: 'แนะนำ',         tab: null,                                count: 6 },
+    { name: 'เน็ตไม่อั้น',   tab: PackageListPage.tabเน็ตไม่อั้น,    count: 6 },
+    { name: 'แพ็กเสริมเน็ต', tab: PackageListPage.tabแพ็กเสริมเน็ต,  count: 3 },
+    { name: 'เน็ต 3G/4G',    tab: PackageListPage.tabเน็ต3G4G,        count: 4 },
+    { name: 'เน็ต 5G',       tab: PackageListPage.tabเน็ต5G,          count: 3 },
+    { name: 'บันเทิง',       tab: PackageListPage.tabบันเทิง,         count: 4 },
+];
+
+// True — 4 tabs, 21 packages
+const TRUE_TABS = [
+    { name: 'แนะนำ',          tab: null,                               count: 6 },
+    { name: 'เน็ตไม่อั้น',    tab: PackageListPage.tabเน็ตไม่อั้น,    count: 6 },
+    { name: 'เน็ตเต็มสปีด',   tab: PackageListPage.tabเน็ตเต็มสปีด,   count: 6 },
+    { name: 'เน็ต + โทรฟรี',  tab: PackageListPage.tabเน็ตโทรฟรี,     count: 3 },
+];
+
+// DTAC — 6 tabs, 27 packages
+const DTAC_TABS = [
+    { name: 'แนะนำ',          tab: null,                               count: 6 },
+    { name: 'เน็ตไม่อั้น',    tab: PackageListPage.tabเน็ตไม่อั้น,    count: 6 },
+    { name: 'เน็ตเต็มสปีด',   tab: PackageListPage.tabเน็ตเต็มสปีด,   count: 6 },
+    { name: 'เน็ต + โทร',     tab: PackageListPage.tabเน็ตโทร,         count: 4 },
+    { name: 'บันเทิง',        tab: PackageListPage.tabบันเทิง,         count: 4 },
+    { name: 'โทรทุกค่าย',     tab: PackageListPage.tabโทรทุกค่าย,      count: 1 },
+];
+
+async function doBuyPackageFlow(networkName, selectNetwork, tabSelector = null, packageIndex = 0) {
     log.step(1, 'รอหน้าเมนูหลัก แล้วกดเติมเงินมือถือ/ซื้อแพ็กเสริม');
     await MainPage.waitForPage(MainPage.screen);
     await MainPage.click(MainPage.topupBtn);
@@ -37,8 +65,8 @@ async function doBuyPackageFlow(networkName, selectNetwork) {
     await TopupPhonePage.confirm();
     log.pass('กรอกเบอร์สำเร็จ');
 
-    log.step(6, 'เลือกแพ็กเกจ — รายการแรกที่แสดง');
-    await PackageListPage.selectFirst();
+    log.step(6, `เลือกแพ็กเกจที่ ${packageIndex + 1}`);
+    await PackageListPage.selectByIndex(packageIndex, tabSelector);
     log.pass('เลือกแพ็กเกจสำเร็จ');
 
     log.step(7, 'ตรวจสอบและยืนยันข้อมูล');
@@ -63,23 +91,25 @@ async function doBuyPackageFlow(networkName, selectNetwork) {
     log.done(`จบ flow ซื้อแพ็กเสริม ${networkName}`);
 }
 
-describe('ซื้อแพ็กเสริม AIS — happy path', () => {
-    it('ซื้อแพ็กเสริม AIS (แพ็กเกจแรก)', async () => {
-        log.banner('ซื้อแพ็กเสริม AIS (แพ็กเกจแรก)');
-        await doBuyPackageFlow('เอไอเอส แพ็กเกจเสริม', () => PackageNetworkPage.selectAIS());
+function buildSuite(networkLabel, selectNetwork, tabs) {
+    tabs.forEach(({ name, tab, count }) => {
+        describe(`ซื้อแพ็กเสริม ${networkLabel} — ${name}`, () => {
+            for (let i = 0; i < count; i++) {
+                // [smoke] tag ใช้ grep ASCII ได้โดยไม่มีปัญหา encoding
+                const smoke = !tab && i === 0;
+                const title = smoke ? `[smoke] แพ็กเกจที่ 1` : `แพ็กเกจที่ ${i + 1}`;
+                it(title, async () => {
+                    log.banner(`ซื้อแพ็กเสริม ${networkLabel} ${name} แพ็กเกจที่ ${i + 1}`);
+                    await doBuyPackageFlow(
+                        `${networkLabel} แพ็กเกจเสริม`,
+                        selectNetwork, tab, i,
+                    );
+                });
+            }
+        });
     });
-});
+}
 
-describe('ซื้อแพ็กเสริม True — happy path', () => {
-    it('ซื้อแพ็กเสริม True (แพ็กเกจแรก)', async () => {
-        log.banner('ซื้อแพ็กเสริม True (แพ็กเกจแรก)');
-        await doBuyPackageFlow('ทรู แพ็กเกจเสริม', () => PackageNetworkPage.selectTrue());
-    });
-});
-
-describe('ซื้อแพ็กเสริม DTAC — happy path', () => {
-    it('ซื้อแพ็กเสริม DTAC (แพ็กเกจแรก)', async () => {
-        log.banner('ซื้อแพ็กเสริม DTAC (แพ็กเกจแรก)');
-        await doBuyPackageFlow('ดีแทค แพ็กเกจเสริม', () => PackageNetworkPage.selectDTAC());
-    });
-});
+buildSuite('เอไอเอส', () => PackageNetworkPage.selectAIS(),  AIS_TABS);
+buildSuite('ทรู',      () => PackageNetworkPage.selectTrue(), TRUE_TABS);
+buildSuite('ดีแทค',    () => PackageNetworkPage.selectDTAC(), DTAC_TABS);

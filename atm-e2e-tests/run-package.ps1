@@ -1,10 +1,17 @@
-# Run all E2E flows except bill payment
-# Order: deposit -> withdraw -> topup -> package -> admin
-# Proxies start once and stay up for all specs.
+# รัน package E2E test พร้อม proxy
 #
-# Usage:
-#   .\run-all.ps1              -- run everything (package = 74 tests)
-#   .\run-all.ps1 -Smoke       -- happy flow    (package = 1 per network via [smoke] tag)
+# รันทั้งหมด:
+#   .\run-package.ps1
+#
+# รันเฉพาะ network:
+#   .\run-package.ps1 -Network ทรู
+#   .\run-package.ps1 -Network เอไอเอส
+#   .\run-package.ps1 -Network ดีแทค
+#
+# รันเฉพาะ tab:
+#   .\run-package.ps1 -Network ทรู -Tab เน็ตไม่อั้น
+#
+# -Network และ -Tab ถูก join เป็น grep pattern เช่น "ทรู.*เน็ตไม่อั้น"
 
 param(
     [string]$DeviceId            = '10.55.10.11:5555',
@@ -15,22 +22,16 @@ param(
     [int]$HostItlProxyPort       = 5002,
     [int]$DeviceRedirectPort     = 5003,
     [int]$HostPayoutProxyPort    = 5004,
-    [string[]]$Specs             = @(
-        '.\test\specs\deposit.spec.js',
-        '.\test\specs\withdraw.spec.js',
-        '.\test\specs\topup.spec.js',
-        '.\test\specs\package.spec.js'
-        # admin.spec.js must run separately via run-admin-refill.ps1
-    ),
-    [switch]$Smoke,
+    [string]$Network             = '',   # ทรู | เอไอเอส | ดีแทค  (ว่าง = ทั้งหมด)
+    [string]$Tab                 = '',   # ชื่อ tab เช่น เน็ตไม่อั้น (ว่าง = ทุก tab)
     [switch]$KeepPortsAfterRun
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot     = Split-Path -Parent $MyInvocation.MyCommand.Path
-$nodePath     = (Get-Command node -ErrorAction Stop).Source
+$repoRoot    = Split-Path -Parent $MyInvocation.MyCommand.Path
+$nodePath    = (Get-Command node -ErrorAction Stop).Source
 
 $itlStdout    = Join-Path $env:TEMP ("proxy-itl-{0}.out.log"    -f [guid]::NewGuid().ToString('N'))
 $itlStderr    = Join-Path $env:TEMP ("proxy-itl-{0}.err.log"    -f [guid]::NewGuid().ToString('N'))
@@ -41,7 +42,7 @@ $itlJob         = $null
 $payoutJob      = $null
 $locationPushed = $false
 $failureMessage = $null
-$results        = [ordered]@{}
+$wdioExitCode   = 0
 
 function Write-Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-Info([string]$msg)  { Write-Host "    $msg"   -ForegroundColor DarkGray }
@@ -127,19 +128,14 @@ function Stop-ProxyJob($job, [string]$name, [int]$port) {
     Clear-Port $port
 }
 
-function Wait-AppiumPortFree([int]$Port) {
-    $deadline = (Get-Date).AddSeconds(15)
-    while (@(Get-ListeningPids $Port).Count -gt 0 -and (Get-Date) -lt $deadline) {
-        Write-Info "Waiting for Appium port $Port to be free..."
-        Start-Sleep -Milliseconds 800
-    }
-    if (@(Get-ListeningPids $Port).Count -gt 0) {
-        Write-Info "Port $Port still busy - killing leftover Appium"
-        Clear-Port $Port
-    }
-}
+# ─── Build grep pattern ───────────────────────────────────────────────────────
 
-# ---- Main -------------------------------------------------------------------
+$grepParts = @()
+if ($Network) { $grepParts += $Network }
+if ($Tab)     { $grepParts += $Tab }
+$grep = $grepParts -join '.*'
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
 
 try {
     $null = Get-Command adb -ErrorAction Stop
@@ -172,28 +168,18 @@ try {
         $itlStdout $itlStderr
     Wait-ProxyReady $HostItlProxyPort 'proxy-itl.js'
 
-    foreach ($spec in $Specs) {
-        $specName = [System.IO.Path]::GetFileNameWithoutExtension($spec)
-        Write-Step "[$specName] $spec"
+    $label = if ($grep) { "package spec (grep: $grep)" } else { 'package spec (ทั้งหมด)' }
+    Write-Step "Running $label"
 
-        Wait-AppiumPortFree 4723
+    $wdioArgs = @('run', '.\wdio.conf.js', '--spec', '.\test\specs\package.spec.js')
+    if ($grep) { $wdioArgs += @('--mochaOpts.grep', $grep) }
 
-        $wdioArgs = @('run', '.\wdio.conf.js', '--spec', $spec)
-        if ($Smoke -and $spec -like '*package*') {
-            $wdioArgs += @('--mochaOpts.grep', '\[smoke\]')
-            Write-Info '(smoke: [smoke] tag only -- 1 package per network)'
-        }
-
-        & $wdioPath @wdioArgs
-        $ec = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
-        $results[$specName] = $ec
-
-        $color  = if ($ec -eq 0) { 'Green' } else { 'Red' }
-        $status = if ($ec -eq 0) { 'PASS' } else { "FAIL (exit $ec)" }
-        Write-Host "    [$specName] $status" -ForegroundColor $color
-    }
+    & $wdioPath @wdioArgs
+    $wdioExitCode = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
+    if ($wdioExitCode -ne 0) { $failureMessage = "WDIO exited with code $wdioExitCode" }
 
 } catch {
+    if ($wdioExitCode -eq 0) { $wdioExitCode = 1 }
     $failureMessage = $_.Exception.Message
 } finally {
     Stop-ProxyJob $itlJob    'proxy-itl.js'    $HostItlProxyPort
@@ -202,37 +188,15 @@ try {
     if (-not $KeepPortsAfterRun) {
         try { Clear-PortState } catch { Write-Info "Cleanup error: $($_.Exception.Message)" }
     }
-
     if ($locationPushed) { Pop-Location }
 }
 
-# ---- Summary ----------------------------------------------------------------
-
-Write-Host ""
-Write-Host "======================================" -ForegroundColor DarkGray
-Write-Host " E2E Results (excluding bill)" -ForegroundColor White
-Write-Host "======================================" -ForegroundColor DarkGray
-
-$anyFail = $false
-foreach ($entry in $results.GetEnumerator()) {
-    $ok     = $entry.Value -eq 0
-    $status = if ($ok) { 'PASS' } else { 'FAIL' }
-    $color  = if ($ok) { 'Green' } else { 'Red' }
-    Write-Host ("  [{0}] {1}" -f $status, $entry.Key) -ForegroundColor $color
-    if (-not $ok) { $anyFail = $true }
-}
-
-if ($results.Count -eq 0) {
-    Write-Host "  (no specs ran)" -ForegroundColor Yellow
-}
-
-Write-Host ""
-Write-Info ("proxy-itl  stdout: {0}" -f $itlStdout)
-Write-Info ("proxy-payout stdout: {0}" -f $payoutStdout)
-
 if ($failureMessage) {
-    Write-Host ("Infrastructure error: {0}" -f $failureMessage) -ForegroundColor Red
-    exit 1
+    Write-Host "`nRun failed: $failureMessage" -ForegroundColor Red
+    Write-Info "proxy-itl stdout:    $itlStdout"
+    Write-Info "proxy-payout stdout: $payoutStdout"
+    exit $wdioExitCode
 }
 
-exit $(if ($anyFail) { 1 } else { 0 })
+Write-Host "`nRun completed successfully." -ForegroundColor Green
+exit 0
